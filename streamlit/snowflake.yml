@@ -1,0 +1,16 @@
+definition_version: 2
+entities:
+  cv_defect_detection_yolo_dashboard:
+    type: streamlit
+    identifier:
+      name: CV_DEFECT_DETECTION_YOLO_DASHBOARD
+    title: "CV Defect Detection YOLO Dashboard"
+    main_file: streamlit_app.py
+    pages_dir: pages/
+    query_warehouse: CV_DEFECT_DETECTION_YOLO_WH
+    artifacts:
+      - streamlit_app.py
+      - pages/
+      - environment.yml
+      - utils/
+      - images/

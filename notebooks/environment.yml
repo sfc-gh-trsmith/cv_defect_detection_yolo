@@ -1,0 +1,12 @@
+name: pcb_defect_detection
+channels:
+  - snowflake
+dependencies:
+  - pytorch
+  - torchvision
+  - pillow
+  - pyyaml
+  - matplotlib
+  - pandas
+  - numpy
+  - scipy

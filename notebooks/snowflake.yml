@@ -1,0 +1,12 @@
+definition_version: 2
+entities:
+  cv_defect_detection_yolo_notebook:
+    type: notebook
+    identifier:
+      name: CV_DEFECT_DETECTION_YOLO_NOTEBOOK
+    main_file: pcb_defect_detection.ipynb
+    query_warehouse: CV_DEFECT_DETECTION_YOLO_WH
+    artifacts:
+      - pcb_defect_detection.ipynb
+      - environment.yml
+

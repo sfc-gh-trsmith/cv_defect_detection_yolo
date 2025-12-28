@@ -205,3 +205,17 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+exmple_ml_ops.ipynb
+.cursor/
+cursor_scratch/
+weights/
+pt_model/
+solution_presentation/PCB_Defect_Detection_Architecture.md
+solution_presentation/PCB_Defect_Detection_Blog.md
+solution_presentation/PCB_Defect_Detection_Slides.md
+solution_presentation/PCB_Defect_Detection_Video_Script.md
+solution_presentation/video/thumbnail.svg
+solution_presentation/sources
+solution_presentation/sources/PCB_Defect_Detection_Sources.md
+data/DeepPCB/
+streamlit/output/

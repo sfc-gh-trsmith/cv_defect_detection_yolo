@@ -1,0 +1,186 @@
+# PCB Defect Detection for Electronics Manufacturing: Achieve Zero-Defect Quality with Snowflake
+
+Quality engineers and data scientists struggle to deploy modern AI inspection systems because factory floor image data is locked in silos, legacy AOI systems generate excessive false positives, and security policies block open-source ML models from running inside the corporate firewall.
+
+---
+
+## The Cost of Inaction
+
+![Problem Impact](images/problem-impact.svg)
+
+**Samsung Galaxy Note 7 Recall (2016)**: A defective battery component passed inspection and made it to market, triggering a $5.3 billion recall, 2.5 million devices scrapped, and a permanent brand reputation hit. The root cause? Manufacturing defects that existing AOI systems failed to catch consistently.
+
+This pattern repeats across electronics manufacturing. According to McKinsey, poor quality costs electronics manufacturers **2-4% of revenue annually**—that's $200-400M for a $10B operation. The irony: better inspection technology exists, but data silos and rigid systems prevent its adoption.
+
+---
+
+## The Problem in Context
+
+- **Excessive False Positives.** Legacy AOI systems flag 15-25% of boards as defective when they're actually fine, requiring expensive manual re-inspection that slows production and inflates labor costs.
+
+- **Data Silos Block ML Teams.** Factory floor image data sits in isolated systems that data scientists cannot access. Without this data, teams cannot train adaptive models that learn from production reality.
+
+- **Security Policies Block Innovation.** Modern computer vision models like YOLO require GPU infrastructure and pip packages that corporate security policies prohibit from running on-premises.
+
+- **Reactive Quality Control.** By the time defects are detected, boards have already progressed through multiple production stages, compounding rework costs and scrap rates.
+
+- **No Root Cause Intelligence.** Operators lack contextual guidance when defects appear. They must manually search through IPC standards and repair manuals to determine the correct remediation procedure.
+
+---
+
+## The Transformation
+
+![Before After](images/before-after.svg)
+
+With Snowflake, manufacturers shift from reactive, siloed quality control to proactive, AI-powered inspection—training custom YOLO models on GPU compute directly inside the data platform where images are already secured and governed.
+
+---
+
+## What We'll Achieve
+
+- **25% Reduction in False Positive Rate.** Custom YOLOv12 models trained on your actual production data learn what defects really look like on your boards, not generic samples.
+
+- **15% Reduction in Scrap Cost.** Earlier, more accurate detection catches defects before boards progress through expensive downstream operations.
+
+- **Real-Time Visibility.** Move from weekly Excel-based quality reports to live dashboards showing defect density, yield rates, and Pareto analysis by defect class.
+
+- **Instant Remediation Guidance.** When a defect is detected, Cortex Search retrieves the relevant IPC standard procedure and repair protocol in seconds, not hours.
+
+---
+
+## Business Value
+
+![ROI Value](images/roi-value.svg)
+
+For a mid-size electronics manufacturer producing 1 million boards annually with a 3% defect rate and $50 average board cost:
+- **$750K annual savings** from 15% scrap reduction
+- **$200K labor savings** from 25% fewer false positive re-inspections
+- **$150K opportunity cost recovered** from real-time vs. weekly reporting cycles
+
+---
+
+## Why Snowflake
+
+- **Unified Data Foundation.** A single, governed platform unifies factory images, defect logs, and equipment telemetry—so ML teams finally have access to the data they need without risky data movement.
+
+- **Performance That Scales.** GPU compute pools scale training jobs from prototype to production without capacity planning friction. Train YOLOv12 on thousands of images in hours, not days.
+
+- **Collaboration Without Compromise.** Secure data sharing lets quality teams across factories collaborate on model training and defect taxonomies while governance policies stay intact.
+
+- **Built-in AI/ML and Apps.** Native Notebooks, Container Runtime, and Streamlit let data scientists train, deploy, and operationalize models without leaving the platform—no external MLOps infrastructure required.
+
+---
+
+## The Data
+
+![Data ERD](images/data-erd.svg)
+
+### Source Tables
+
+| Table | Type | Records | Purpose |
+|-------|------|---------|---------|
+| PCB_METADATA | Dimension | ~1M | Board identification, manufacturing date, factory line, product type |
+| DEFECT_LOGS | Fact | ~30K | Inference results with class, confidence, bounding boxes |
+| MODEL_STAGE | Stage | ~500MB | Raw images, trained model weights, YOLO configuration |
+
+### Data Characteristics
+
+- **Freshness:** Images ingested per-batch during production; inference results written in real-time during inspection.
+- **Trust:** Images governed by role-based access; model weights versioned in stage; inference audit trail in DEFECT_LOGS.
+- **Relationships:** Each defect log links to a board (board_id) and includes spatial coordinates for visualization.
+
+---
+
+## Solution Architecture
+
+![Architecture](images/architecture.svg)
+
+The solution follows a left-to-right data journey:
+
+- **Data Ingestion:** Deep PCB images uploaded to internal stage (`@MODEL_STAGE/raw/deeppcb`)
+- **Training Pipeline:** Snowflake Notebook on Container Runtime with GPU compute pool trains YOLOv12
+- **Model Persistence:** Trained weights saved back to stage (`@MODEL_STAGE/models/yolov12_pcb`)
+- **Inference & Logging:** Predictions written to DEFECT_LOGS with structured schema
+- **Visualization:** Streamlit dashboard surfaces defect analytics and interactive inspection
+
+---
+
+## How It Comes Together
+
+1. **Admin Setup.** Platform team configures GPU compute pool, network rules for PyPI/GitHub egress, and external access integration. → [sql/01_account_setup.sql](../sql/01_account_setup.sql)
+
+2. **Data Preparation.** Deep PCB images downloaded from stage, converted to YOLO format with normalized bounding boxes and class mappings. → [notebooks/pcb_defect_detection.ipynb](../notebooks/pcb_defect_detection.ipynb)
+
+3. **Model Training.** YOLOv12 trained on GPU using Container Runtime. Epochs, batch size, and augmentation configured for production-quality detection. → [notebooks/pcb_defect_detection.ipynb](../notebooks/pcb_defect_detection.ipynb)
+
+4. **Model Persistence.** Best model weights (best.pt) uploaded to stage for versioned storage and downstream inference. → [pt_model/best.pt](../pt_model/best.pt)
+
+5. **Interactive Inference.** Streamlit Vision Lab lets operators upload board images and see defect predictions in real-time. → [streamlit/pages/1_Vision_Lab.py](../streamlit/pages/1_Vision_Lab.py)
+
+6. **Defect Analytics.** Executive dashboard shows yield rates, defect Pareto, and trend analysis powered by Cortex Analyst. → [streamlit/streamlit_app.py](../streamlit/streamlit_app.py)
+
+7. **AI Remediation Guidance.** Cortex Search retrieves IPC standard procedures and repair protocols based on detected defect class. → [DRD.md](../DRD.md)
+
+---
+
+## Key Visualizations
+
+### Defect Class Distribution
+
+The YOLOv12 model detects 6 defect classes common in PCB manufacturing:
+
+| Class ID | Defect Type | Description |
+|----------|-------------|-------------|
+| 0 | Open | Broken trace or missing connection |
+| 1 | Short | Unintended connection between traces |
+| 2 | Mousebite | Irregular edge defect on trace |
+| 3 | Spur | Unwanted protrusion from trace |
+| 4 | Copper | Excess copper where none should exist |
+| 5 | Pin-hole | Small void in copper plane |
+
+### Dashboard Preview
+
+![Dashboard](images/dashboard-preview.svg)
+
+The Streamlit application provides:
+
+- **Executive Overview:** High-level yield rate cards and defect Pareto chart
+- **Vision Lab:** Interactive image upload with YOLOv12 inference and bounding box overlay
+- **Cortex RAG Integration:** Toggle between querying defect data (Analyst) or IPC manuals (Search)
+- **Real-Time Results:** Inference executes in &lt;2 seconds with detection confidence scores
+
+---
+
+## Call to Action
+
+**Deploy the PCB Defect Detection Demo**
+
+Run the complete pipeline in your Snowflake account:
+
+```bash
+# 1. Deploy infrastructure (compute pools, network rules, stages)
+./deploy.sh
+
+# 2. Run the training notebook on GPU
+./run.sh main
+
+# 3. Launch the Streamlit dashboard
+./run.sh streamlit
+
+# 4. Clean up when done
+./clean.sh --force
+```
+
+**Customize for Your Production Environment**
+
+Adapt this solution to your factory's specific needs:
+
+- Replace Deep PCB dataset with your production images (upload to MODEL_STAGE)
+- Extend defect taxonomy beyond 6 classes to match your IPC requirements
+- Connect to your MES/ERP systems via Snowflake connectors for production context
+- Scale compute pool for multi-line, multi-shift concurrent training
+
+---
+
+*Transform quality control from reactive firefighting to proactive intelligence—with your data secure, your models custom-trained, and your insights instant.*
+
