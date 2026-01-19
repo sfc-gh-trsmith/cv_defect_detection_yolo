@@ -219,3 +219,4 @@ solution_presentation/sources
 solution_presentation/sources/PCB_Defect_Detection_Sources.md
 data/DeepPCB/
 streamlit/output/
+.specstory/

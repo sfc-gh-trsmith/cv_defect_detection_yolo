@@ -27,10 +27,14 @@ This project demonstrates training a state-of-the-art **YOLOv12** object detecti
 ## Features
 
 - **GPU-Accelerated Training**: Train YOLOv12 models on Snowflake's Container Runtime with NVIDIA GPU compute pools
+- **Distributed Training**: Uses `PyTorchDistributor` from Snowflake ML for scalable GPU training
 - **6 Defect Classes**: Detect open, short, mousebite, spur, copper, and pin-hole defects
 - **Secure Data Processing**: Images never leave the Snowflake platform
+- **Automatic Data Acquisition**: Notebook clones Deep PCB dataset from GitHub and caches to stage
 - **Interactive Dashboard**: 3-page Streamlit application with executive analytics, vision lab, and documentation
-- **RAG Integration**: Cortex Search for IPC standard lookups and defect remediation guidance
+- **AI Guidance (Demo)**: Placeholder UI for Cortex Search/Analyst integration (hardcoded responses for demonstration)
+
+> **Current Limitations**: The Vision Lab inference and Cortex RAG features display demo/placeholder responses. Production deployment requires training the model first and deploying an SPCS inference service.
 
 ## Prerequisites
 
@@ -142,12 +146,18 @@ The dashboard provides three pages for different user personas:
 
 ### Vision Lab
 
-- **Image Analysis**: Browse images from Snowflake stage or upload new PCB images
-- **Defect Detection**: Run YOLOv12 inference on selected images
-- **AI Guidance**: RAG-powered chatbot for defect remediation
-  - Query Manuals (Cortex Search): IPC standards and repair procedures
-  - Query Data (Cortex Analyst): Defect analytics and trends
+- **Image Browsing**: Browse PCB images from `@MODEL_STAGE/raw/deeppcb/` or upload new images
+- **Image Upload**: Upload custom PCB images for analysis
+- **Defect Detection (Demo Mode)**: Displays simulated detection results
+- **AI Guidance (Demo Mode)**: Hardcoded responses demonstrating Cortex Search/Analyst integration patterns
+  - Query Manuals: Shows example IPC standard guidance
+  - Query Data: Shows example analytics response
 - **Defect Reference**: Quick reference for all 6 defect classes with severity levels
+
+> **Note**: The Vision Lab currently operates in demo mode. To enable real-time inference:
+> 1. Train the model by running `./run.sh main`
+> 2. Deploy an SPCS inference service with the trained model
+> 3. Update `1_Vision_Lab.py` to call the inference service endpoint
 
 ### About
 
@@ -177,20 +187,70 @@ The deployment creates the following resources:
 |--------|-------------|
 | `MODEL_STAGE` | Stage for Deep PCB dataset and trained models |
 | `NOTEBOOKS` | Stage for notebook files |
-| `PCB_METADATA` | Table tracking PCB boards and factory lines |
+| `PCB_METADATA` | Table tracking PCB boards and factory lines (sample data) |
 | `DEFECT_LOGS` | Table storing inference results |
+| `PCB_LABELED_DATA` | Table created by notebook for distributed training (images + labels) |
 | `DEFECT_SUMMARY` | View aggregating defects by class |
 | `DAILY_DEFECT_TRENDS` | View for time-series analysis |
 | `FACTORY_LINE_DEFECTS` | View for factory performance |
 
+## Data Acquisition
+
+The training data is acquired automatically when the notebook runs:
+
+1. **First Run**: The notebook uses `git sparse-checkout` to clone only the `PCBData/` folder from the [Deep PCB repository](https://github.com/tangsanli5201/DeepPCB)
+2. **Caching**: Downloaded images are uploaded to `@MODEL_STAGE/raw/deeppcb/` for subsequent runs
+3. **Subsequent Runs**: Data is downloaded from the Snowflake stage (faster than GitHub)
+
+**Pretrained Weights**: The notebook expects YOLOv12 pretrained weights at `@MODEL_STAGE/weights/yolo12n.pt`. If deploying with `--only-data`, place `yolo12n.pt` in a local `weights/` folder before running `deploy.sh`.
+
+### Stage Structure
+
+```
+@MODEL_STAGE/
+├── raw/
+│   └── deeppcb/           # Training images (auto-downloaded)
+│       └── group*/        # Image groups from Deep PCB dataset
+├── models/
+│   └── yolov12_pcb/       # Trained model outputs
+│       └── yolo_best.pt   # Best model weights
+└── weights/
+    └── yolo12n.pt         # Pretrained weights (manual upload)
+```
+
+## Training Architecture
+
+The notebook uses Snowflake's `PyTorchDistributor` for distributed GPU training:
+
+### Training Pipeline
+
+1. **Data Preparation**: Images and labels are converted to YOLO format and loaded into the `PCB_LABELED_DATA` table
+2. **Distributed Execution**: `PyTorchDistributor` launches training across GPU workers with data sharding
+3. **Model Training**: Each worker receives a data shard via `ShardedDataConnector` and trains YOLOv12
+4. **Model Persistence**: The best model weights are saved to `@MODEL_STAGE/models/yolov12_pcb/`
+
+### Configuration
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `num_nodes` | 1 | Number of compute nodes |
+| `num_workers_per_node` | 1 | GPU workers per node |
+| `num_gpus` | 1 | GPUs per worker |
+| `epochs` | 10 | Training epochs (increase for production) |
+| `batch_size` | 16 | Images per batch |
+| `imgsz` | 640 | Input image size |
+
+To scale training, increase `num_nodes` or `num_workers_per_node` in the notebook's `PyTorchScalingConfig`.
+
 ## Technology Stack
 
 - **Compute**: Snowflake Notebooks on Container Runtime with GPU (`GPU_NV_M`)
+- **Distributed Training**: `PyTorchDistributor` from `snowflake-ml-python` for GPU-accelerated training
 - **Model**: YOLOv12 (Ultralytics) - Attention-centric real-time object detector
-- **Framework**: PyTorch
+- **Framework**: PyTorch with Ultralytics
 - **Dashboard**: Streamlit in Snowflake
-- **Visualization**: Plotly, Altair
-- **AI Features**: Cortex Search (RAG), Cortex Analyst (structured data)
+- **Visualization**: Plotly, Matplotlib
+- **AI Features (Demo)**: Cortex Search and Cortex Analyst UI placeholders for future integration
 
 ## Project Structure
 
@@ -198,9 +258,11 @@ The deployment creates the following resources:
 ├── deploy.sh                    # Deployment script
 ├── run.sh                       # Execution and operations script
 ├── clean.sh                     # Cleanup script
+├── create_user.sh               # User creation utility
 ├── notebooks/
 │   ├── pcb_defect_detection.ipynb   # YOLOv12 training notebook
-│   └── environment.yml              # Notebook conda environment
+│   ├── environment.yml              # Notebook conda environment
+│   └── snowflake.yml                # Snowflake notebook config
 ├── streamlit/
 │   ├── streamlit_app.py         # Main dashboard (Executive Overview)
 │   ├── snowflake.yml            # Streamlit deployment config
@@ -217,15 +279,17 @@ The deployment creates the following resources:
 │       └── logo.svg             # App logo
 ├── sql/
 │   ├── 01_account_setup.sql     # Account-level setup (roles, compute pool, EAI)
-│   └── 02_schema_setup.sql      # Schema-level setup (tables, stages, views)
-├── scripts/
-│   └── update_notebook.py       # Notebook update utility
-├── weights/
-│   └── yolo12n.pt               # Pretrained YOLOv12 weights
+│   ├── 02_schema_setup.sql      # Schema-level setup (tables, stages, views)
+│   └── 03_network_egress.sql    # Network egress configuration
+├── solution_presentation/
+│   ├── PCB_Defect_Detection_Overview.md  # Presentation slides content
+│   └── images/                  # Presentation diagrams (SVG)
 ├── data/
-│   └── DeepPCB/                 # Deep PCB dataset (git sparse clone)
+│   └── .gitkeep                 # Placeholder (data downloaded at runtime)
 └── DRD.md                       # Design Requirements Document
 ```
+
+> **Note**: The Deep PCB dataset is automatically downloaded via git sparse clone when the notebook runs for the first time. Pretrained YOLOv12 weights (`yolo12n.pt`) must be downloaded separately and placed in a `weights/` folder before deployment if you want to skip downloading from HuggingFace at runtime.
 
 ## Licenses & Attributions
 
