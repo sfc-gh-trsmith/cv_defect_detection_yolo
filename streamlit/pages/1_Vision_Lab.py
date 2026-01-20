@@ -113,7 +113,7 @@ def draw_comparison(image: Image.Image, ground_truth: list, inference_df: pd.Dat
     Draw both ground truth and inference results on the same image.
     
     Ground truth: thin boxes with "GT:" prefix
-    Inference: thick boxes with confidence score (filtered by threshold)
+    Inference: thick boxes with confidence score
     
     Args:
         image: PIL Image to annotate
@@ -145,9 +145,11 @@ def draw_comparison(image: Image.Image, ground_truth: list, inference_df: pd.Dat
         draw.rectangle([x1, y1, x2, y2], outline=color, width=2)
         draw.text((x1, max(0, y2 + 2)), f"GT: {class_name}", fill=color)
     
-    # Draw inference boxes (thicker, brighter) - filtered by confidence threshold
+    # Draw inference boxes (thicker, brighter)
     if inference_df is not None and not inference_df.empty:
+        # Filter locally if needed, though caller should usually filter
         filtered_df = inference_df[inference_df['CONFIDENCE_SCORE'] >= confidence_threshold]
+        
         for _, row in filtered_df.iterrows():
             if pd.isna(row.get('BBOX_X_CENTER')) or pd.isna(row.get('BBOX_Y_CENTER')):
                 continue
@@ -198,7 +200,7 @@ def draw_detections(image: Image.Image, defects_df: pd.DataFrame, confidence_thr
     draw = ImageDraw.Draw(img_copy)
     img_w, img_h = img_copy.size
     
-    # Filter by confidence threshold
+    # Filter locally
     filtered_df = defects_df[defects_df['CONFIDENCE_SCORE'] >= confidence_threshold]
     
     for _, row in filtered_df.iterrows():
@@ -467,13 +469,14 @@ with col_left:
             help="Only show detections with confidence score above this threshold"
         )
         
-        # Inference button - fetches and stores raw data only
+        # Analyze button - fetch data
         if st.button("🔍 Analyze Image", type="primary"):
-            with st.spinner("Loading detection data..."):
+            with st.spinner("Analyzing image..."):
+                # Reset previous analysis
                 ground_truth_labels = []
-                inference_df = pd.DataFrame()
+                defects_df = pd.DataFrame()
                 
-                # Query ground truth from PCB_LABELED_DATA (always fetch, filter at display time)
+                # Fetch Ground Truth
                 if image_filename:
                     try:
                         gt_sql = get_ground_truth_sql(image_filename)
@@ -483,140 +486,112 @@ with col_left:
                             ground_truth_labels = parse_yolo_labels(label_text)
                     except Exception:
                         pass
-                
-                # Query DEFECT_LOGS for inference results (always fetch, filter at display time)
+
+                # Fetch Inference Results
                 if image_filename:
                     try:
                         defects_sql = get_image_defects_sql(image_filename)
-                        inference_df = execute_query(session, defects_sql, "image_defects")
+                        defects_df = execute_query(session, defects_sql, "image_defects")
                     except Exception:
                         pass
                 
-                # Store raw data in session state for dynamic rendering
-                st.session_state['ground_truth_labels'] = ground_truth_labels
-                st.session_state['inference_df'] = inference_df
-                st.session_state['analysis_image_key'] = image_filename
-                st.session_state['analysis_base_image'] = image
-                st.session_state['analysis_caption'] = image_caption
+                # Store in session state
+                st.session_state['current_analysis'] = {
+                    'filename': image_filename,
+                    'ground_truth': ground_truth_labels,
+                    'inference': defects_df,
+                    'analyzed': True
+                }
         
-        # =====================================================================
-        # DYNAMIC RENDERING - Renders based on current checkbox/slider values
-        # =====================================================================
+        # Display Logic
+        analysis_data = st.session_state.get('current_analysis', {})
         
-        # Check if we have analysis data for the current image
-        has_analysis = (
-            st.session_state.get('analysis_image_key') == image_filename and
-            'ground_truth_labels' in st.session_state and
-            'inference_df' in st.session_state and
-            'analysis_base_image' in st.session_state
-        )
+        # Check if we have analysis data for the CURRENT loaded image
+        is_analyzed = analysis_data.get('analyzed', False) and analysis_data.get('filename') == image_filename
         
-        if has_analysis:
-            # Retrieve stored data
-            ground_truth_labels = st.session_state['ground_truth_labels']
-            inference_df = st.session_state['inference_df']
-            base_image = st.session_state['analysis_base_image']
-            stored_caption = st.session_state.get('analysis_caption', image_caption)
+        if is_analyzed:
+            ground_truth_labels = analysis_data['ground_truth']
+            defects_df = analysis_data['inference']
             
-            # Filter inference results by confidence threshold
-            if not inference_df.empty:
-                filtered_inference_df = inference_df[inference_df['CONFIDENCE_SCORE'] >= confidence_threshold]
-            else:
-                filtered_inference_df = inference_df
+            # Filter inference by confidence
+            filtered_defects = pd.DataFrame()
+            if not defects_df.empty:
+                filtered_defects = defects_df[defects_df['CONFIDENCE_SCORE'] >= confidence_threshold]
             
-            has_gt = len(ground_truth_labels) > 0
-            has_inference = not filtered_inference_df.empty
+            # Determine what to draw
+            has_gt = bool(ground_truth_labels)
+            has_inference = not filtered_defects.empty
             
-            # Draw annotations based on current checkbox values
+            # Draw
             if (show_ground_truth and has_gt) or (show_inference and has_inference):
                 if show_ground_truth and show_inference:
-                    # Draw both
-                    display_image = draw_comparison(
-                        base_image, 
-                        ground_truth_labels if show_ground_truth else [], 
-                        filtered_inference_df if show_inference else None,
-                        confidence_threshold
-                    )
+                     display_image = draw_comparison(image, ground_truth_labels if show_ground_truth else [], filtered_defects if show_inference else None, confidence_threshold)
                 elif show_ground_truth and has_gt:
-                    # Draw only ground truth
-                    display_image = draw_ground_truth(base_image, ground_truth_labels)
+                     display_image = draw_ground_truth(image, ground_truth_labels)
                 elif show_inference and has_inference:
-                    # Draw only inference
-                    display_image = draw_detections(base_image, filtered_inference_df, confidence_threshold)
-                else:
-                    display_image = base_image
+                     display_image = draw_detections(image, filtered_defects, confidence_threshold)
             else:
-                display_image = base_image
+                 display_image = image # No annotations needed based on filters
             
-            # Show analysis results summary
+            st.image(display_image, caption=image_caption)
+            
+            # Results Card
             gt_count = len(ground_truth_labels)
-            inf_total = len(inference_df) if not inference_df.empty else 0
-            inf_filtered = len(filtered_inference_df) if not filtered_inference_df.empty else 0
+            inf_count = len(filtered_defects)
+            inf_total = len(defects_df) if not defects_df.empty else 0
             
-            if has_gt or inf_total > 0:
-                st.markdown(f"""
-                <div class="detection-card">
-                    <h4 style="color: #e2e8f0; margin-bottom: 0.5rem;">📊 Analysis Results</h4>
-                    <div style="display: flex; gap: 2rem; margin-top: 0.5rem;">
-                        <div>
-                            <span style="color: #6b7280; font-size: 0.85rem;">Ground Truth</span><br/>
-                            <span style="color: #e2e8f0; font-size: 1.5rem; font-weight: 600;">{gt_count}</span>
-                            <span style="color: #94a3b8;"> defects</span>
-                        </div>
-                        <div>
-                            <span style="color: #64D2FF; font-size: 0.85rem;">Model Inference</span><br/>
-                            <span style="color: #e2e8f0; font-size: 1.5rem; font-weight: 600;">{inf_filtered}</span>
-                            <span style="color: #94a3b8;"> / {inf_total} above threshold</span>
-                        </div>
+            st.markdown(f"""
+            <div class="detection-card">
+                <h4 style="color: #e2e8f0; margin-bottom: 0.5rem;">📊 Analysis Results</h4>
+                <div style="display: flex; gap: 2rem; margin-top: 0.5rem;">
+                    <div>
+                        <span style="color: #6b7280; font-size: 0.85rem;">Ground Truth</span><br/>
+                        <span style="color: #e2e8f0; font-size: 1.5rem; font-weight: 600;">{gt_count}</span>
+                        <span style="color: #94a3b8;"> defects</span>
+                    </div>
+                    <div>
+                        <span style="color: #64D2FF; font-size: 0.85rem;">Model Inference</span><br/>
+                        <span style="color: #e2e8f0; font-size: 1.5rem; font-weight: 600;">{inf_count}</span>
+                        <span style="color: #94a3b8;"> / {inf_total} detected</span>
                     </div>
                 </div>
-                """, unsafe_allow_html=True)
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Show ground truth defect types
+            if show_ground_truth and has_gt:
+                gt_classes = [CLASS_NAMES.get(label[0], 'unknown') for label in ground_truth_labels]
+                st.markdown("**Ground Truth Labels:** " + ", ".join(gt_classes))
+            
+            # Show inference defect badges (filtered by threshold)
+            if show_inference and has_inference:
+                st.markdown("**Model Predictions:**")
+                badges_html = ""
+                for _, row in filtered_defects.iterrows():
+                    defect_class = row['DETECTED_CLASS'].lower().replace('-', '')
+                    confidence = row['CONFIDENCE_SCORE']
+                    badges_html += f'<span class="defect-badge defect-{defect_class}">{row["DETECTED_CLASS"]} ({confidence:.2f})</span>\\n'
+                st.markdown(badges_html, unsafe_allow_html=True)
                 
-                # Show ground truth defect types
-                if show_ground_truth and has_gt:
-                    gt_classes = [CLASS_NAMES.get(label[0], 'unknown') for label in ground_truth_labels]
-                    st.markdown("**Ground Truth Labels:** " + ", ".join(gt_classes))
-                
-                # Show inference defect badges (filtered by threshold)
-                if show_inference and has_inference:
-                    st.markdown("**Model Predictions:**")
-                    badges_html = ""
-                    for _, row in filtered_inference_df.iterrows():
-                        defect_class = row['DETECTED_CLASS'].lower().replace('-', '')
-                        confidence = row['CONFIDENCE_SCORE']
-                        badges_html += f'<span class="defect-badge defect-{defect_class}">{row["DETECTED_CLASS"]} ({confidence:.2f})</span>\n'
-                    st.markdown(badges_html, unsafe_allow_html=True)
-                    
-                    # Show detailed table
-                    with st.expander("📊 Detailed Detection Data"):
-                        display_df_cols = filtered_inference_df[['DETECTED_CLASS', 'CONFIDENCE_SCORE', 'BOARD_ID']].copy()
-                        display_df_cols.columns = ['Defect Type', 'Confidence', 'Board ID']
-                        st.dataframe(display_df_cols, use_container_width=True)
-            else:
-                st.markdown("""
+                # Show detailed table
+                with st.expander("📊 Detailed Detection Data"):
+                    display_df_cols = filtered_defects[['DETECTED_CLASS', 'CONFIDENCE_SCORE', 'BOARD_ID']].copy()
+                    display_df_cols.columns = ['Defect Type', 'Confidence', 'Board ID']
+                    st.dataframe(display_df_cols, use_container_width=True)
+            
+            # If nothing found/filtered
+            if not has_gt and not has_inference:
+                 st.markdown("""
                 <div class="detection-card">
-                    <h4 style="color: #e2e8f0; margin-bottom: 0.5rem;">📭 No Data Available</h4>
+                    <h4 style="color: #e2e8f0; margin-bottom: 0.5rem;">📭 No Data Visible</h4>
                     <p style="color: #94a3b8;">
-                        No ground truth or inference data found for this image.
-                        <ul style="margin-top: 0.5rem; padding-left: 1.5rem;">
-                            <li>Run the YOLOv12 training notebook to generate inference data</li>
-                            <li>Ensure the image is from the training dataset for ground truth</li>
-                        </ul>
+                        No ground truth or inference data matches the current filters.
                     </p>
                 </div>
                 """, unsafe_allow_html=True)
-            
-            # Build caption with current display settings
-            caption_suffix = []
-            if show_ground_truth and has_gt:
-                caption_suffix.append("ground truth")
-            if show_inference and has_inference:
-                caption_suffix.append(f"inference ≥{confidence_threshold:.2f}")
-            suffix = " + ".join(caption_suffix) if caption_suffix else "no annotations"
-            st.image(display_image, caption=f"{stored_caption} ({suffix})")
+
         else:
-            # No analysis yet - show original image
-            st.image(display_image, caption=image_caption)
+            st.image(image, caption=image_caption)
     else:
         # Show sample from recent detections
         st.info("Select an image from the stage above or upload a new image.")
@@ -736,4 +711,3 @@ with col_right:
 
 st.markdown("---")
 st.caption("Vision Lab • YOLOv12 Inference • Cortex RAG Integration")
-
