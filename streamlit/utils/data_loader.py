@@ -87,6 +87,27 @@ def load_recent_defects(_session) -> pd.DataFrame:
     return execute_query(_session, RECENT_DEFECTS_SQL, "recent_defects")
 
 
+@st.cache_data(ttl=60)
+def load_defect_examples(_session) -> pd.DataFrame:
+    """Load one sample image per defect class with highest confidence."""
+    from utils.query_registry import DEFECT_EXAMPLES_SQL
+    return execute_query(_session, DEFECT_EXAMPLES_SQL, "defect_examples")
+
+
+@st.cache_data(ttl=60)
+def load_confidence_distribution(_session) -> pd.DataFrame:
+    """Load confidence score distribution by defect class."""
+    from utils.query_registry import CONFIDENCE_DISTRIBUTION_SQL
+    return execute_query(_session, CONFIDENCE_DISTRIBUTION_SQL, "confidence_distribution")
+
+
+@st.cache_data(ttl=60)
+def load_images_with_defects(_session) -> pd.DataFrame:
+    """Load images grouped by defect count and types for smart picker."""
+    from utils.query_registry import IMAGES_WITH_DEFECTS_SQL
+    return execute_query(_session, IMAGES_WITH_DEFECTS_SQL, "images_with_defects")
+
+
 @st.cache_data(ttl=300)
 def list_stage_images(_session, limit: int = 100) -> List[str]:
     """
@@ -116,6 +137,57 @@ def list_stage_images(_session, limit: int = 100) -> List[str]:
     except Exception as e:
         # Return empty list if stage doesn't exist or has no images
         return []
+
+
+@st.cache_data(ttl=300)
+def get_stage_path_mapping(_session) -> Dict[str, str]:
+    """
+    Build a mapping from filename to full stage path.
+    
+    The stage has nested directories (group*/subdir/) but DEFECT_LOGS stores
+    simplified paths with just the filename. This mapping allows us to resolve
+    the actual stage path from a filename.
+    
+    Returns:
+        Dict mapping filename (e.g., '20085122_test.jpg') to 
+        full stage path (e.g., 'model_stage/raw/deeppcb/group20085/20085/20085122_test.jpg')
+    """
+    import os
+    stage_images = list_stage_images(_session, limit=10000)
+    return {os.path.basename(path): path for path in stage_images}
+
+
+def resolve_image_path(_session, image_path: str) -> str:
+    """
+    Resolve an IMAGE_PATH from DEFECT_LOGS to the actual stage path.
+    
+    DEFECT_LOGS stores paths like '@MODEL_STAGE/raw/deeppcb/file.jpg' but the
+    actual stage has nested directories. This function resolves the filename
+    to the correct full path.
+    
+    Args:
+        _session: Snowflake Snowpark session
+        image_path: Path from DEFECT_LOGS (e.g., '@MODEL_STAGE/raw/deeppcb/file.jpg')
+    
+    Returns:
+        Actual stage path that can be downloaded (e.g., 'model_stage/raw/deeppcb/group.../file.jpg')
+    """
+    import os
+    
+    # Extract just the filename from the path
+    filename = os.path.basename(image_path.replace('@MODEL_STAGE/', '').replace('model_stage/', ''))
+    
+    # Look up the full path in our mapping
+    mapping = get_stage_path_mapping(_session)
+    
+    if filename in mapping:
+        return mapping[filename]
+    
+    # Fallback: try the original path conversion
+    if image_path.startswith('@MODEL_STAGE/'):
+        return image_path.replace('@MODEL_STAGE/', 'model_stage/')
+    
+    return image_path
 
 
 def load_stage_image(_session, stage_path: str, local_dir: str = "/tmp/pcb_images") -> str:

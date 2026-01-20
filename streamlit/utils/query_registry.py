@@ -166,3 +166,112 @@ PCB_COUNT_SQL = register_query(
     min_rows=1
 )
 
+# Observation Count (unique images inspected)
+OBSERVATION_COUNT_SQL = register_query(
+    "observation_count",
+    """
+    SELECT 
+        COUNT(DISTINCT IMAGE_PATH) AS TOTAL_OBSERVATIONS,
+        COUNT(DISTINCT BOARD_ID) AS UNIQUE_BOARDS
+    FROM DEFECT_LOGS
+    """,
+    "Count of unique observations (images) with defects",
+    min_rows=1
+)
+
+
+# Sample Image per Defect Class (for examples)
+DEFECT_EXAMPLES_SQL = register_query(
+    "defect_examples",
+    """
+    SELECT DETECTED_CLASS, IMAGE_PATH, CONFIDENCE_SCORE,
+           BBOX_X_CENTER, BBOX_Y_CENTER, BBOX_WIDTH, BBOX_HEIGHT
+    FROM (
+        SELECT DETECTED_CLASS, IMAGE_PATH, CONFIDENCE_SCORE,
+               BBOX_X_CENTER, BBOX_Y_CENTER, BBOX_WIDTH, BBOX_HEIGHT,
+               ROW_NUMBER() OVER (PARTITION BY DETECTED_CLASS ORDER BY CONFIDENCE_SCORE DESC) as rn
+        FROM DEFECT_LOGS
+    )
+    WHERE rn = 1
+    ORDER BY DETECTED_CLASS
+    """,
+    "One sample image per defect class with highest confidence",
+    min_rows=0
+)
+
+# Confidence Score Distribution
+CONFIDENCE_DISTRIBUTION_SQL = register_query(
+    "confidence_distribution",
+    """
+    SELECT 
+        DETECTED_CLASS,
+        FLOOR(CONFIDENCE_SCORE * 10) / 10 AS CONF_BUCKET,
+        COUNT(*) AS COUNT
+    FROM DEFECT_LOGS
+    GROUP BY DETECTED_CLASS, FLOOR(CONFIDENCE_SCORE * 10) / 10
+    ORDER BY DETECTED_CLASS, CONF_BUCKET
+    """,
+    "Confidence score distribution by defect class",
+    min_rows=0
+)
+
+# Images with Defect Summary (for smart picker)
+IMAGES_WITH_DEFECTS_SQL = register_query(
+    "images_with_defects",
+    """
+    SELECT 
+        IMAGE_PATH,
+        COUNT(*) AS DEFECT_COUNT,
+        LISTAGG(DISTINCT DETECTED_CLASS, ', ') WITHIN GROUP (ORDER BY DETECTED_CLASS) AS DEFECT_TYPES,
+        AVG(CONFIDENCE_SCORE) AS AVG_CONFIDENCE
+    FROM DEFECT_LOGS
+    GROUP BY IMAGE_PATH
+    ORDER BY DEFECT_COUNT DESC
+    """,
+    "Images grouped by defect count and types",
+    min_rows=0
+)
+
+
+def get_image_defects_sql(image_filename: str) -> str:
+    """
+    Generate SQL to query defects for a specific image.
+    
+    Args:
+        image_filename: The filename (e.g., '00041001_temp.jpg')
+    
+    Returns:
+        SQL query string
+    """
+    return f"""
+    SELECT 
+        DETECTED_CLASS,
+        CONFIDENCE_SCORE,
+        BBOX_X_CENTER,
+        BBOX_Y_CENTER,
+        BBOX_WIDTH,
+        BBOX_HEIGHT,
+        BOARD_ID,
+        INFERENCE_TIMESTAMP
+    FROM DEFECT_LOGS
+    WHERE IMAGE_PATH LIKE '%{image_filename}'
+    ORDER BY CONFIDENCE_SCORE DESC
+    """
+
+
+def get_ground_truth_sql(image_filename: str) -> str:
+    """
+    Generate SQL to query ground truth labels for a specific image.
+    
+    Args:
+        image_filename: The filename (e.g., '00041001_temp.jpg')
+    
+    Returns:
+        SQL query string
+    """
+    return f"""
+    SELECT FILENAME, LABEL_TEXT
+    FROM PCB_LABELED_DATA
+    WHERE FILENAME = '{image_filename}'
+    """
+

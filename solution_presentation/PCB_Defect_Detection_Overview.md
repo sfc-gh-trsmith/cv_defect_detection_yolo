@@ -44,7 +44,7 @@ With Snowflake, manufacturers shift from reactive, siloed quality control to pro
 
 - **Real-Time Visibility.** Move from weekly Excel-based quality reports to live dashboards showing defect density, yield rates, and Pareto analysis by defect class.
 
-- **Instant Remediation Guidance.** When a defect is detected, Cortex Search retrieves the relevant IPC standard procedure and repair protocol in seconds, not hours.
+- **Interactive Model Validation.** Vision Lab enables operators to compare model predictions against ground truth labels, validating detection accuracy before production deployment.
 
 ---
 
@@ -113,13 +113,13 @@ The solution follows a left-to-right data journey:
 
 3. **Model Training.** YOLOv12 trained on GPU using Container Runtime. Epochs, batch size, and augmentation configured for production-quality detection. → [notebooks/pcb_defect_detection.ipynb](../notebooks/pcb_defect_detection.ipynb)
 
-4. **Model Persistence.** Best model weights (best.pt) uploaded to stage for versioned storage and downstream inference. → [pt_model/best.pt](../pt_model/best.pt)
+4. **Model Persistence.** Best model weights saved to `@MODEL_STAGE/models/yolov12_pcb/yolo_best.pt` for versioned storage and downstream inference.
 
 5. **Interactive Inference.** Streamlit Vision Lab lets operators upload board images and see defect predictions in real-time. → [streamlit/pages/1_Vision_Lab.py](../streamlit/pages/1_Vision_Lab.py)
 
-6. **Defect Analytics.** Executive dashboard shows yield rates, defect Pareto, and trend analysis powered by Cortex Analyst. → [streamlit/streamlit_app.py](../streamlit/streamlit_app.py)
+6. **Defect Analytics.** Executive dashboard shows yield rates, defect Pareto, confidence distribution, and factory line performance. → [streamlit/streamlit_app.py](../streamlit/streamlit_app.py)
 
-7. **AI Remediation Guidance.** Cortex Search retrieves IPC standard procedures and repair protocols based on detected defect class. → [DRD.md](../DRD.md)
+7. **Model Registry Integration.** Trained model logged to Snowflake Model Registry for versioning, SQL-based inference, and SPCS deployment. → [notebooks/pcb_defect_detection.ipynb](../notebooks/pcb_defect_detection.ipynb)
 
 ---
 
@@ -144,10 +144,10 @@ The YOLOv12 model detects 6 defect classes common in PCB manufacturing:
 
 The Streamlit application provides:
 
-- **Executive Overview:** High-level yield rate cards and defect Pareto chart
-- **Vision Lab:** Interactive image upload with YOLOv12 inference and bounding box overlay
-- **Cortex RAG Integration:** Toggle between querying defect data (Analyst) or IPC manuals (Search)
-- **Real-Time Results:** Inference executes in &lt;2 seconds with detection confidence scores
+- **Executive Overview:** High-level yield rate cards, defect Pareto chart, and factory line performance heatmap
+- **Vision Lab:** Interactive stage browser with ground truth comparison and confidence threshold filtering
+- **Defect Examples:** Sample images for each defect class with bounding box visualization
+- **Real-Time Results:** Inference results from DEFECT_LOGS with confidence scores and spatial coordinates
 
 ---
 

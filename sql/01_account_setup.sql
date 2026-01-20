@@ -25,7 +25,7 @@ GRANT ROLE IDENTIFIER($PROJECT_ROLE) TO ROLE ACCOUNTADMIN;
 --------------------------------------------------------------------------------
 CREATE WAREHOUSE IF NOT EXISTS IDENTIFIER($PROJECT_WH)
     WAREHOUSE_SIZE = 'XSMALL'
-    AUTO_SUSPEND = 60
+    AUTO_SUSPEND = 600000
     AUTO_RESUME = TRUE
     INITIALLY_SUSPENDED = TRUE
     COMMENT = 'Warehouse for CV Defect Detection YOLO queries';

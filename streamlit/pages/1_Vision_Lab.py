@@ -1,7 +1,7 @@
 """
 PCB Defect Detection - Vision Lab
 
-Interactive YOLOv12 inference interface with RAG-powered defect guidance.
+Interactive YOLOv12 inference interface with ground truth comparison.
 """
 
 import streamlit as st
@@ -236,7 +236,6 @@ def draw_detections(image: Image.Image, defects_df: pd.DataFrame, confidence_thr
 
 st.set_page_config(
     page_title="Vision Lab | PCB Defect Detection",
-    page_icon="🔬",
     layout="wide"
 )
 
@@ -297,7 +296,7 @@ with st.sidebar:
 # HEADER
 # =============================================================================
 
-st.title("🔬 Vision Lab")
+st.title("Vision Lab")
 st.markdown("*Interactive PCB defect detection with AI-powered guidance*")
 
 # =============================================================================
@@ -310,7 +309,7 @@ session = get_active_session()
 col_left, col_right = st.columns([1, 1])
 
 with col_left:
-    st.subheader("📸 Image Analysis")
+    st.subheader("Image Analysis")
     
     # Image source selection
     image_source = st.radio(
@@ -408,7 +407,7 @@ with col_left:
         
         # Load button
         if selected_stage_path:
-            if st.button("📥 Load Image", type="secondary"):
+            if st.button("Load Image", type="secondary"):
                 with st.spinner("Downloading image from stage..."):
                     try:
                         local_path = load_stage_image(session, selected_stage_path)
@@ -464,13 +463,13 @@ with col_left:
             "Confidence Threshold",
             min_value=0.0,
             max_value=1.0,
-            value=0.5,
+            value=0.75,
             step=0.05,
             help="Only show detections with confidence score above this threshold"
         )
         
         # Analyze button - fetch data
-        if st.button("🔍 Analyze Image", type="primary"):
+        if st.button("Analyze Image", type="primary"):
             with st.spinner("Analyzing image..."):
                 # Reset previous analysis
                 ground_truth_labels = []
@@ -542,7 +541,7 @@ with col_left:
             
             st.markdown(f"""
             <div class="detection-card">
-                <h4 style="color: #e2e8f0; margin-bottom: 0.5rem;">📊 Analysis Results</h4>
+                <h4 style="color: #e2e8f0; margin-bottom: 0.5rem;">Analysis Results</h4>
                 <div style="display: flex; gap: 2rem; margin-top: 0.5rem;">
                     <div>
                         <span style="color: #6b7280; font-size: 0.85rem;">Ground Truth</span><br/>
@@ -570,11 +569,11 @@ with col_left:
                 for _, row in filtered_defects.iterrows():
                     defect_class = row['DETECTED_CLASS'].lower().replace('-', '')
                     confidence = row['CONFIDENCE_SCORE']
-                    badges_html += f'<span class="defect-badge defect-{defect_class}">{row["DETECTED_CLASS"]} ({confidence:.2f})</span>\\n'
+                    badges_html += f'<span class="defect-badge defect-{defect_class}">{row["DETECTED_CLASS"]} ({confidence:.2f})</span>\n'
                 st.markdown(badges_html, unsafe_allow_html=True)
                 
                 # Show detailed table
-                with st.expander("📊 Detailed Detection Data"):
+                with st.expander("Detailed Detection Data"):
                     display_df_cols = filtered_defects[['DETECTED_CLASS', 'CONFIDENCE_SCORE', 'BOARD_ID']].copy()
                     display_df_cols.columns = ['Defect Type', 'Confidence', 'Board ID']
                     st.dataframe(display_df_cols, use_container_width=True)
@@ -583,7 +582,7 @@ with col_left:
             if not has_gt and not has_inference:
                  st.markdown("""
                 <div class="detection-card">
-                    <h4 style="color: #e2e8f0; margin-bottom: 0.5rem;">📭 No Data Visible</h4>
+                    <h4 style="color: #e2e8f0; margin-bottom: 0.5rem;">No Data Visible</h4>
                     <p style="color: #94a3b8;">
                         No ground truth or inference data matches the current filters.
                     </p>
@@ -618,73 +617,8 @@ with col_left:
             st.info("No recent detections available. Run the notebook to generate inference data.")
 
 with col_right:
-    st.subheader("🤖 Defect Guidance")
-    
-    # Query mode toggle
-    query_mode = st.radio(
-        "Query Mode",
-        ["Query Manuals (RAG)", "Query Data (Analytics)"],
-        horizontal=True
-    )
-    
-    # Chat input
-    user_question = st.text_input(
-        "Ask about defects or procedures",
-        placeholder="e.g., What causes mousebite defects?"
-    )
-    
-    if user_question:
-        if query_mode == "Query Manuals (RAG)":
-            # RAG response (would use Cortex Search in production)
-            st.markdown(f"""
-            <div class="chat-message">
-                <div style="color: #60a5fa; font-size: 0.75rem; text-transform: uppercase; 
-                            letter-spacing: 0.05em; margin-bottom: 0.25rem;">🤖 AI Response (Cortex Search)</div>
-                <p style="color: #e2e8f0; line-height: 1.5; margin: 0;">
-                    <strong>Mousebite defects</strong> are small irregularities along the PCB edge, 
-                    typically caused by improper routing or depanelization. According to IPC-A-610 
-                    Class 2 standards, mousebites are acceptable if they don't reduce conductor 
-                    spacing below minimum requirements.
-                    <br/><br/>
-                    <strong>Common causes:</strong>
-                    <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                        <li>Worn router bits</li>
-                        <li>Improper feed rate during depanelization</li>
-                        <li>Incorrect tab placement in panel design</li>
-                    </ul>
-                    <strong>Remediation:</strong> Replace worn tooling and verify feed rates.
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            # Analytics query (would use Cortex Analyst in production)
-            st.markdown(f"""
-            <div class="chat-message">
-                <div style="color: #60a5fa; font-size: 0.75rem; text-transform: uppercase; 
-                            letter-spacing: 0.05em; margin-bottom: 0.25rem;">📊 Analytics Response (Cortex Analyst)</div>
-                <p style="color: #e2e8f0; line-height: 1.5; margin: 0;">
-                    Based on the defect logs, here's the relevant data analysis:
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Show relevant data
-            try:
-                defect_query = f"""
-                SELECT DETECTED_CLASS, COUNT(*) as COUNT, AVG(CONFIDENCE_SCORE) as AVG_CONF
-                FROM DEFECT_LOGS
-                WHERE LOWER(DETECTED_CLASS) LIKE '%{user_question.lower().split()[0]}%'
-                GROUP BY DETECTED_CLASS
-                """
-                result = execute_query(session, defect_query, "user_query")
-                if not result.empty:
-                    st.dataframe(result, use_container_width=True)
-            except:
-                st.info("No matching data found for your query.")
-    
     # Quick reference
-    st.markdown("---")
-    st.markdown("### 📚 Defect Reference")
+    st.markdown("### Defect Reference")
     
     defect_info = {
         "open": ("Critical", "Broken trace causing circuit discontinuity"),
@@ -710,4 +644,4 @@ with col_right:
 # =============================================================================
 
 st.markdown("---")
-st.caption("Vision Lab • YOLOv12 Inference • Cortex RAG Integration")
+st.caption("Vision Lab • YOLOv12 Inference • Ground Truth Comparison")
